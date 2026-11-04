@@ -201,3 +201,18 @@ def test_backfill_adds_notes_without_rewriting_history(repo):
     run(sys.executable, SCRIPT, "backfill", cwd=r, env=env)
     assert "AI-Cost:" in run("git", "notes", "--ref=refs/notes/ai-spend", "show", "HEAD", cwd=r, env=env).stdout
     assert run("git", "rev-parse", "HEAD~1", cwd=r, env=env).stdout == head_before
+
+
+def test_report_file_refreshes_on_commit_and_is_stable(repo):
+    r, env, root = repo
+    run(sys.executable, SCRIPT, "install", "--mode", "trailers", "--report", "docs/ai-spend.md", cwd=r, env=env)
+    write_transcript(root, [line("r1", time.time() - 5, os.path.realpath(r))])
+    commit(r, env, "feat: first (ADR 7)", "j.txt")          # stamped; report still empty-ish
+    commit(r, env, "docs: second", "k.txt")                  # report now includes the first
+    text = (r / "docs" / "ai-spend.md").read_text()
+    assert text.startswith("# AI spend") and "| 7 | 1 |" in text and "feat: first" in text
+    tracked = run("git", "ls-files", "docs/ai-spend.md", cwd=r, env=env).stdout.strip()
+    assert tracked == "docs/ai-spend.md", "the report is committed with the change"
+    out1 = run(sys.executable, SCRIPT, "report", cwd=r, env=env).stdout
+    out2 = run(sys.executable, SCRIPT, "report", cwd=r, env=env).stdout
+    assert out1 == out2, "deterministic: no churn"

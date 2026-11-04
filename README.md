@@ -11,6 +11,7 @@ python3 ~/Downloads/ai-spend/ai_spend.py install --mode trailers  # private repo
 python3 ~/Downloads/ai-spend/ai_spend.py csv  > spend.csv         # one row per commit
 python3 ~/Downloads/ai-spend/ai_spend.py adr                      # totals per ADR
 python3 ~/Downloads/ai-spend/ai_spend.py backfill --dry-run       # past commits, from transcripts on disk
+python3 ~/Downloads/ai-spend/ai_spend.py report                    # markdown summary (per ADR, per month, top commits)
 ```
 
 A stamped commit:
@@ -26,5 +27,8 @@ AI-Cost: 98.80 USD (API list price, 214 responses)
   `git fetch origin refs/notes/ai-spend:refs/notes/ai-spend`.
 - Existing `commit-msg` / `post-commit` hooks: `install --force` chains them.
 - Mode later: `git config ai-spend.mode notes|trailers|off`.
+- A summary file kept current in the repository (private repos): `install --report docs/ai-spend.md`.
+  A pre-commit hook refreshes and stages it, so it always covers history up to the previous commit.
+  Not for public repositories: it publishes what the work cost.
 
 Tests: `python3 -m pytest tests`.
