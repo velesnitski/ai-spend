@@ -226,20 +226,27 @@ def commit_time(rev: str, repo: str) -> float:
     return float(out) if out else 0.0
 
 
-def me(repo: str) -> str:
-    """The effective author email: config, overridden by GIT_AUTHOR_EMAIL."""
+def me(repo: str) -> set[str]:
+    """Every email this person commits as: the effective author email (config,
+    overridden by GIT_AUTHOR_EMAIL) plus any listed in `ai-spend.email`
+    (multi-valued: `git config --global --add ai-spend.email work@example.com`).
+    One person committing under two identities is still one window."""
     ident = git("var", "GIT_AUTHOR_IDENT", cwd=repo, check=False)
     m = re.search(r"<([^>]*)>", ident)
-    return m.group(1).strip().lower() if m else ""
+    emails = {m.group(1).strip().lower()} if m else set()
+    extra = git("config", "--get-all", "ai-spend.email", cwd=repo, check=False)
+    emails |= {e.strip().lower() for e in extra.splitlines() if e.strip()}
+    return emails
 
 
-def my_commits(repo: str, email: str) -> list[tuple[str, float, bool]]:
-    """(sha, commit time, is_merge) of every commit authored by `email`, oldest first."""
+def my_commits(repo: str, emails: set[str]) -> list[tuple[str, float, bool]]:
+    """(sha, commit time, is_merge) of every commit authored by one of `emails`,
+    oldest first."""
     out = git("log", "--reverse", "--format=%H %ct %ae %P", "HEAD", cwd=repo, check=False)
     rows = []
     for ln in out.splitlines():
         parts = ln.split()
-        if len(parts) >= 3 and parts[2].lower() == email:
+        if len(parts) >= 3 and parts[2].lower() in emails:
             rows.append((parts[0], float(parts[1]), len(parts) > 4))
     return rows
 

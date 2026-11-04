@@ -227,3 +227,17 @@ def test_report_file_refreshes_on_commit_and_is_stable(repo):
     out1 = run(sys.executable, SCRIPT, "report", cwd=r, env=env).stdout
     out2 = run(sys.executable, SCRIPT, "report", cwd=r, env=env).stdout
     assert out1 == out2, "deterministic: no churn"
+
+
+def test_two_identities_of_one_person_share_one_window(repo):
+    r, env, root = repo
+    run("git", "config", "--add", "ai-spend.email", "work@example.com", cwd=r, env=env)
+    work = dict(env, GIT_AUTHOR_EMAIL="work@example.com",
+                GIT_COMMITTER_DATE="2000-01-02T00:00:00Z", GIT_AUTHOR_DATE="2000-01-02T00:00:00Z")
+    (r / "w.txt").write_text("w")
+    run("git", "add", "w.txt", cwd=r, env=work)
+    run("git", "commit", "-q", "-m", "feat: from the work identity", cwd=r, env=work)
+    t = datetime(2000, 1, 1, 12, tzinfo=timezone.utc).timestamp()
+    write_transcript(root, [line("id1", t, os.path.realpath(r))])
+    assert "added 1 note(s)" in run(sys.executable, SCRIPT, "backfill", cwd=r, env=env).stdout
+    assert "AI-Cost" in run("git", "notes", "--ref=refs/notes/ai-spend", "show", "HEAD", cwd=r, env=env).stdout
