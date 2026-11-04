@@ -123,10 +123,12 @@ TS_RE = re.compile(r'"timestamp":\s*"([^"]+)"')
 
 def usage_events(repo: str, start: float, end: float, root: str = TRANSCRIPTS):
     """(time, model, usage) for each response attributed to `repo` in
-    (start, end], once per response: streaming writes one line per content block.
-    Cheap text checks (usage present, repo path present, time in window) run
-    before any JSON is parsed: transcripts run to gigabytes."""
-    seen = set()
+    (start, end], once per response. Streaming writes several lines per response
+    and the early ones carry partial counts (output grows line by line), so the
+    most complete line wins: the largest output count. Cheap text checks (usage
+    present, repo path present, time in window) run before any JSON is parsed:
+    transcripts run to gigabytes."""
+    best: dict[str, tuple[float, str, dict]] = {}
     files = [f for f in glob.glob(os.path.join(root, "**", "*.jsonl"), recursive=True)
              if os.path.getmtime(f) > start]
     for f in files:
@@ -146,11 +148,13 @@ def usage_events(repo: str, start: float, end: float, root: str = TRANSCRIPTS):
                 u, model, mid = m.get("usage"), m.get("model") or "", m.get("id")
                 if not u or not model or model.startswith("<") or not _belongs(e, raw, repo):
                     continue
-                if mid:
-                    if mid in seen:
-                        continue
-                    seen.add(mid)
-                yield t, model, u
+                if not mid:
+                    yield t, model, u
+                    continue
+                prev = best.get(mid)
+                if prev is None or (u.get("output_tokens") or 0) > (prev[2].get("output_tokens") or 0):
+                    best[mid] = (t, model, u)
+    yield from best.values()
 
 
 def spend_between(repo: str, start: float, end: float, root: str = TRANSCRIPTS) -> Spend:
@@ -429,7 +433,7 @@ def hook_pre_commit(repo: str) -> None:
     git("add", "--", path, cwd=repo)
 
 
-def backfill(repo: str, rev_range: str, dry_run: bool) -> list[tuple[str, Spend]]:
+def backfill(repo: str, rev_range: str, dry_run: bool, force: bool = False) -> list[tuple[str, Spend]]:
     """Notes for this person's past commits in `rev_range`, from the transcripts
     still on disk (Claude Code deletes old ones per its cleanupPeriodDays). Merges
     and other authors' commits are skipped. One pass over the transcripts, split
@@ -441,7 +445,7 @@ def backfill(repo: str, rev_range: str, dry_run: bool) -> list[tuple[str, Spend]
             windows.append((sha, prev, t))
         prev = t
     windows = [w for w in windows
-               if not git("notes", f"--ref={NOTES_REF}", "show", w[0], cwd=repo, check=False).strip()
+               if (force or not git("notes", f"--ref={NOTES_REF}", "show", w[0], cwd=repo, check=False).strip())
                and "AI-Cost:" not in git("log", "-1", "--format=%B", w[0], cwd=repo)]
     if not windows:
         return []
@@ -459,7 +463,7 @@ def backfill(repo: str, rev_range: str, dry_run: bool) -> list[tuple[str, Spend]
         done.append((sha, s))
         if not dry_run:
             note = "\n".join(f"{k}: {v}" for k, v in trailers(s))
-            git("notes", f"--ref={NOTES_REF}", "add", "-m", note, sha, cwd=repo)
+            git("notes", f"--ref={NOTES_REF}", "add", "-f", "-m", note, sha, cwd=repo)
     return done
 
 
@@ -481,6 +485,7 @@ def main(argv: list[str]) -> int:
     p = sub.add_parser("backfill")
     p.add_argument("range", nargs="?", default="HEAD")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--force", action="store_true", help="recompute commits that already have a note")
     p = sub.add_parser("hook")
     p.add_argument("name", choices=["commit-msg", "post-commit", "pre-commit"])
     p.add_argument("args", nargs="*")
@@ -518,7 +523,7 @@ def main(argv: list[str]) -> int:
         # Per-ADR rows can overlap (a commit naming two ADRs); the total does not.
         print(f"{'total':>5} {len(recs):>7} {'':>8} {'':>9} {sum(r.get('cost', 0.0) for r in recs):>9.2f}")
     elif a.cmd == "backfill":
-        done = backfill(repo, a.range, a.dry_run)
+        done = backfill(repo, a.range, a.dry_run, a.force)
         for sha, s in done:
             print(f"{sha[:10]} {s.model:<20} out={_n(s.output):>6} {s.cost:>8.2f} USD")
         print(f"{'would add' if a.dry_run else 'added'} {len(done)} note(s)")

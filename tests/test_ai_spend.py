@@ -63,6 +63,17 @@ def test_window_dedupe_and_attribution(tmp_path):
     assert s.responses == 2 and s.output == 2000
 
 
+def test_streamed_response_counts_its_most_complete_line(tmp_path):
+    repo, root, now = str(tmp_path / "repo"), str(tmp_path / "t"), time.time()
+    write_transcript(root, [
+        line("s1", now - 10, repo, out=14),     # first streamed line: partial
+        line("s1", now - 10, repo, out=148),    # last line: complete
+        line("s1", now - 10, repo, out=90),
+    ])
+    s = a.spend_between(repo, now - 100, now, root)
+    assert s.responses == 1 and s.output == 148
+
+
 def test_trailer_text_round_trips():
     s = a.Spend()
     s.add("claude-opus-5-5", {"input_tokens": 1200, "output_tokens": 48000,
