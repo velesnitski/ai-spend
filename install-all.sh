@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # Install ai-spend hooks in every git repository directly under a directory
-# (default ~/Downloads). Mode per repository (ADR 001):
-#   private on GitHub (ours)            -> trailers
+# (default: the current directory). Mode per repository (ADR 001):
+#   private on GitHub (yours)           -> trailers
 #   public, other remotes, no remote    -> notes (local; never pushed by default)
 #   GitHub repositories owned by others -> skipped
 # Existing commit-msg/post-commit hooks are never replaced: those repositories
 # are reported and left alone (re-run `ai_spend.py install --force` there to chain).
 #   ./install-all.sh [DIR] [--dry-run]
 set -uo pipefail
-DIR="${1:-$HOME/Downloads}"
+DIR="${1:-.}"
 DRY="${2:-}"
-OWNER="${AI_SPEND_OWNER:-velesnitski}"
+# Your GitHub login (repositories of other owners are skipped); needs `gh`.
+OWNER="${AI_SPEND_OWNER:-$(gh api user -q .login 2>/dev/null)}"
+[ -n "$OWNER" ] || { echo "set AI_SPEND_OWNER or log in with gh"; exit 1; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
 for d in "$DIR"/*/; do
   d="${d%/}"; [ -d "$d/.git" ] || continue

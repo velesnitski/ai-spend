@@ -8,7 +8,7 @@ on the commit as git trailers (private repositories) or as a git note under
 refs/notes/ai-spend (the default: notes are not pushed unless asked to), and read
 back into CSV or per-ADR totals. No database, no service, no third-party code.
 
-  ai-spend install [--mode notes|trailers] [--force]   # in a repository
+  ai-spend install [--mode notes|trailers|off] [--report PATH] [--force]
   ai-spend csv [REV_RANGE]                             # one row per commit
   ai-spend adr [REV_RANGE]                             # totals per ADR number
   ai-spend backfill [REV_RANGE] [--dry-run]            # notes for past commits
